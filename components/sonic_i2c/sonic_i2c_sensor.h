@@ -12,11 +12,11 @@ class SonicI2CSensor : public sensor::Sensor, public PollingComponent, public i2
   void setup() override;
   void dump_config() override;
   void update() override;
-  void loop() override;  // Non-blocking state machine
+  void loop() override;
   float get_setup_priority() const override;
 
  protected:
-  // State machine for non-blocking measurement
+  // High-speed measurement state machine
   enum class MeasurementState {
     IDLE,
     TRIGGER,
@@ -26,15 +26,20 @@ class SonicI2CSensor : public sensor::Sensor, public PollingComponent, public i2
   
   MeasurementState measurement_state_{MeasurementState::IDLE};
   uint32_t last_trigger_time_{0};
+  bool continuous_mode_{false};
   
+  void start_measurement_();
   void process_measurement_();
-  bool read_distance_quick_(float &distance);  // Must complete in <30ms
+  bool read_distance_fast_(float &distance);  // Optimized for speed
+  void enable_continuous_mode_();  // Try to enable faster sampling
   
-  // RCWL-9620 specific constants
+  // RCWL-9620 constants optimized for speed
   static const uint8_t RCWL9620_REG_DISTANCE_HIGH = 0x00;
   static const uint8_t RCWL9620_REG_DISTANCE_LOW = 0x01;
   static const uint8_t RCWL9620_CMD_TRIGGER = 0x01;
-  static const uint32_t MEASUREMENT_DELAY_MS = 65;  // Sensor measurement time
+  
+  // High-speed timing - reduced from 65ms to minimum viable
+  static const uint32_t MIN_MEASUREMENT_DELAY_MS = 25;  // Minimum for reliable reading
 };
 
 }  // namespace sonic_i2c
