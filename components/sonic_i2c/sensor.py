@@ -3,10 +3,8 @@ import esphome.config_validation as cv
 from esphome.components import i2c, sensor
 from esphome.const import (
     CONF_ID,
-    DEVICE_CLASS_DISTANCE,
     STATE_CLASS_MEASUREMENT,
     UNIT_METER,
-    ICON_RULER,
 )
 
 DEPENDENCIES = ["i2c"]
@@ -17,15 +15,13 @@ SonicI2CSensor = sonic_i2c_ns.class_(
     "SonicI2CSensor", sensor.Sensor, cg.PollingComponent, i2c.I2CDevice
 )
 
-# Configuration schema - matches what you use in your YAML
+# Configuration schema - simplified
 CONFIG_SCHEMA = (
     sensor.sensor_schema(
         SonicI2CSensor,
         unit_of_measurement=UNIT_METER,
         accuracy_decimals=3,
-        device_class=DEVICE_CLASS_DISTANCE,
         state_class=STATE_CLASS_MEASUREMENT,
-        icon=ICON_RULER,
     )
     .extend(
         {
@@ -35,7 +31,6 @@ CONFIG_SCHEMA = (
     .extend(cv.polling_component_schema("1s"))
     .extend(i2c.i2c_device_schema(0x57))  # Default I2C address
 )
-
 
 async def to_code(config):
     """Generate the C++ code for the component"""
