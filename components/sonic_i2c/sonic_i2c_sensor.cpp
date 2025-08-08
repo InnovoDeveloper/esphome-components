@@ -9,7 +9,7 @@ static const char *const TAG = "sonic_i2c";
 
 // Configurable min/max valid range (in mm)
 constexpr float MIN_DISTANCE_MM = 20.0f;
-constexpr float MAX_DISTANCE_MM = 4500.0f;  // Based on your original file
+constexpr float MAX_DISTANCE_MM = 4500.0f;
 
 // Set non-blocking wait time (less than 30ms, as per request)
 constexpr uint32_t MEASUREMENT_DELAY_MS = 25;  // 25ms non-blocking wait
@@ -24,7 +24,7 @@ void SonicI2CSensor::dump_config() {
   LOG_SENSOR(TAG, "Ultrasonic Sensor", this);
   LOG_I2C_DEVICE(this);
   LOG_UPDATE_INTERVAL(this);
-  ESP_LOGCONFIG(TAG, "Range: %.2fmm - %.2fmm (%.2fcm - %.2fcm, %.2fin - %.2fin)", MIN_DISTANCE_MM, MAX_DISTANCE_MM, MIN_DISTANCE_MM/10.0f, MAX_DISTANCE_MM/10.0f, MIN_DISTANCE_MM/25.4f, MAX_DISTANCE_MM/25.4f);
+  ESP_LOGCONFIG(TAG, "Range: %.2fmm - %.2fmm", MIN_DISTANCE_MM, MAX_DISTANCE_MM);
   ESP_LOGCONFIG(TAG, "Non-blocking measurement delay: %d ms", MEASUREMENT_DELAY_MS);
 }
 
@@ -63,19 +63,17 @@ void SonicI2CSensor::loop() {
       bool success = false;
       if (this->read(data_buffer, 3)) {
         uint32_t raw = (data_buffer[0] << 16) | (data_buffer[1] << 8) | data_buffer[2];
-        float distance_mm = raw / 1000.0f;  // Data seems to be in micrometers
-        float distance_cm = distance_mm / 10.0f;
-        float distance_m = distance_mm / 1000.0f;
-        float distance_in = distance_mm / 25.4f;
+        float distance_mm = raw / 1000.0f;  // Data in micrometers, convert to mm
 
-        ESP_LOGI(TAG, "Raw: 0x%06X | mm: %.2f | cm: %.2f | m: %.3f | in: %.2f", raw, distance_mm, distance_cm, distance_m, distance_in);
+        ESP_LOGI(TAG, "Raw: 0x%06X | mm: %.2f", raw, distance_mm);
 
         if (distance_mm >= MIN_DISTANCE_MM && distance_mm <= MAX_DISTANCE_MM) {
-          this->publish_state(distance_m); // meters for ESPHome
-          ESP_LOGI(TAG, "Published: %.3f m (%.2f cm, %.2f in)", distance_m, distance_cm, distance_in);
+          // ESPHome expects meters
+          this->publish_state(distance_mm / 1000.0f);
+          ESP_LOGI(TAG, "Published: %.3f m (%.2f mm)", distance_mm / 1000.0f, distance_mm);
           success = true;
         } else {
-          ESP_LOGW(TAG, "Incorrect Distance Reading: %.2f mm (%.2f cm, %.2f in)", distance_mm, distance_cm, distance_in);
+          ESP_LOGW(TAG, "Incorrect Distance Reading: %.2f mm", distance_mm);
           this->publish_state(NAN);
         }
       }
