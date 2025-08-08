@@ -1,5 +1,6 @@
 #include "sonic_i2c_sensor.h"
 #include "esphome/core/log.h"
+#include "esphome/core/application.h" // For App.get_millis()
 
 namespace esphome {
 namespace sonic_i2c {
@@ -23,12 +24,12 @@ void SonicI2CSensor::dump_config() {
 void SonicI2CSensor::update() {
   // Start measurement cycle
   this->measurement_state_ = TRIGGER_MEASUREMENT;
-  this->last_measurement_time_ = esphome::millis();
+  this->last_measurement_time_ = App.get_millis(); // Use ESPHome's global time function
 }
 
 void SonicI2CSensor::loop() {
   // Non-blocking state machine to handle the measurement timing
-  uint32_t now = esphome::millis();
+  uint32_t now = App.get_millis(); // Use ESPHome's global time function
   
   switch (this->measurement_state_) {
     case IDLE:
