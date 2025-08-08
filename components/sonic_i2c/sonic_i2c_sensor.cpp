@@ -1,6 +1,6 @@
 #include "sonic_i2c_sensor.h"
 #include "esphome/core/log.h"
-#include <esp_timer.h> // <-- Add this for ESPHome on ESP32/ESP-IDF
+#include <esp_timer.h> // For esp_timer_get_time()
 
 namespace esphome {
 namespace sonic_i2c {
@@ -54,43 +54,34 @@ void SonicI2CSensor::loop() {
       
     case READ_RESULT:
       {
-        // Read the result (fast operation, <10ms)
         uint8_t data[2];
         bool success = false;
         
-        // Method 1: Standard read from register 0x00
+        // Always log and publish the raw value for diagnostics
         if (this->read_bytes(0x00, data, 2)) {
-          uint16_t distance_mm = (data[0] << 8) | data[1];
-          float distance_m = distance_mm / 1000.0f;
-          
-          // RCWL-9620 valid range: 20mm to 4500mm
-          if (distance_mm >= 20 && distance_mm <= 4500) {
-            this->publish_state(distance_m);
-            ESP_LOGD(TAG, "Distance: %d mm (%.3f m)", distance_mm, distance_m);
-            success = true;
-          } else {
-            ESP_LOGV(TAG, "Out of range: %d mm", distance_mm);
-          }
+          uint16_t raw = (data[0] << 8) | data[1];
+          ESP_LOGW(TAG, "Diagnostic: Raw sensor reading: 0x%04X (%d)", raw, raw);
+
+          // Attempt to interpret as mm
+          float distance_m = raw / 1000.0f;
+          ESP_LOGD(TAG, "Diagnostic: Interpreted as meters: %.3f m", distance_m);
+
+          // Attempt to interpret as cm
+          float distance_m_cm = raw / 100.0f;
+          ESP_LOGD(TAG, "Diagnostic: Interpreted as meters (cm): %.3f m", distance_m_cm);
+
+          // Publish raw value as-is (meters, mm interpretation)
+          this->publish_state(distance_m);
+
+          // For diagnostic: you may also want to publish both interpretations to separate sensors
+          // (if you have multiple output sensors; otherwise, log is sufficient)
+
+          success = true;
         }
-        
-        // Method 2: Try different interpretation if first failed
-        if (!success && (data[0] != 0 || data[1] != 0)) {
-          // Maybe it's in cm, not mm
-          uint16_t distance_cm = (data[0] << 8) | data[1];
-          float distance_m = distance_cm / 100.0f;
-          
-          if (distance_cm >= 2 && distance_cm <= 450) {
-            this->publish_state(distance_m);
-            ESP_LOGD(TAG, "Distance: %d cm (%.3f m)", distance_cm, distance_m);
-            success = true;
-          }
-        }
-        
         if (!success) {
-          ESP_LOGW(TAG, "Failed to read valid distance (got: 0x%02X%02X)", data[0], data[1]);
+          ESP_LOGW(TAG, "Failed to read distance (got: 0x%02X%02X)", data[0], data[1]);
           this->publish_state(NAN);
         }
-        
         this->measurement_state_ = IDLE;
         break;
       }
