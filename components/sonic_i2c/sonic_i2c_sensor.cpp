@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include "sonic_i2c_sensor.h"
 #include "esphome/core/log.h"
 
