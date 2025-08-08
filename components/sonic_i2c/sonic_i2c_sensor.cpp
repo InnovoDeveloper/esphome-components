@@ -73,17 +73,19 @@ void SonicI2CSensor::process_measurement_() {
       break;
       
     case MeasurementState::TRIGGER:
-      // Quick trigger for single-shot mode
-      auto err = this->write_register(RCWL9620_CMD_TRIGGER, nullptr, 0);
-      if (err != i2c::ERROR_OK) {
-        ESP_LOGV(TAG, "Trigger failed: %d", err);
-        this->measurement_state_ = MeasurementState::IDLE;
-        return;
+      {
+        // Quick trigger for single-shot mode
+        auto err = this->write_register(RCWL9620_CMD_TRIGGER, nullptr, 0);
+        if (err != i2c::ERROR_OK) {
+          ESP_LOGV(TAG, "Trigger failed: %d", err);
+          this->measurement_state_ = MeasurementState::IDLE;
+          return;
+        }
+        
+        this->last_trigger_time_ = now;
+        this->measurement_state_ = MeasurementState::WAITING;
+        break;
       }
-      
-      this->last_trigger_time_ = now;
-      this->measurement_state_ = MeasurementState::WAITING;
-      break;
       
     case MeasurementState::WAITING:
       // Minimum wait time for sensor measurement
@@ -93,30 +95,32 @@ void SonicI2CSensor::process_measurement_() {
       break;
       
     case MeasurementState::READING:
-      float distance_cm;
-      if (this->read_distance_fast_(distance_cm)) {
-        float distance_meters = distance_cm / 100.0f;
-        
-        // For fast objects, accept wider range to avoid missing detections
-        if (distance_cm >= 1.0f && distance_cm <= 500.0f) {
-          this->publish_state(distance_meters);
-          ESP_LOGV(TAG, "Fast read: %.1fcm (%.3fm)", distance_cm, distance_meters);
-        } else {
-          // Don't publish NAN for out-of-range in high-speed mode
-          // This reduces noise in fast tracking applications
-          ESP_LOGV(TAG, "Out of range: %.1fcm", distance_cm);
+      {
+        float distance_cm;
+        if (this->read_distance_fast_(distance_cm)) {
+          float distance_meters = distance_cm / 100.0f;
+          
+          // For fast objects, accept wider range to avoid missing detections
+          if (distance_cm >= 1.0f && distance_cm <= 500.0f) {
+            this->publish_state(distance_meters);
+            ESP_LOGV(TAG, "Fast read: %.1fcm (%.3fm)", distance_cm, distance_meters);
+          } else {
+            // Don't publish NAN for out-of-range in high-speed mode
+            // This reduces noise in fast tracking applications
+            ESP_LOGV(TAG, "Out of range: %.1fcm", distance_cm);
+          }
         }
+        
+        // Return to appropriate state for next measurement
+        if (this->continuous_mode_) {
+          // In continuous mode, read again after minimal delay
+          delay(2);  // 2ms delay for I2C bus recovery
+          this->measurement_state_ = MeasurementState::READING;
+        } else {
+          this->measurement_state_ = MeasurementState::IDLE;
+        }
+        break;
       }
-      
-      // Return to appropriate state for next measurement
-      if (this->continuous_mode_) {
-        // In continuous mode, read again after minimal delay
-        delay(2);  // 2ms delay for I2C bus recovery
-        this->measurement_state_ = MeasurementState::READING;
-      } else {
-        this->measurement_state_ = MeasurementState::IDLE;
-      }
-      break;
   }
 }
 
