@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include "sonic_i2c_sensor.h"
 #include "esphome/core/log.h"
 
@@ -24,12 +23,12 @@ void SonicI2CSensor::dump_config() {
 void SonicI2CSensor::update() {
   // Start measurement cycle
   this->measurement_state_ = TRIGGER_MEASUREMENT;
-  this->last_measurement_time_ = millis();
+  this->last_measurement_time_ = esphome::millis();
 }
 
 void SonicI2CSensor::loop() {
   // Non-blocking state machine to handle the measurement timing
-  uint32_t now = millis();
+  uint32_t now = esphome::millis();
   
   switch (this->measurement_state_) {
     case IDLE:
