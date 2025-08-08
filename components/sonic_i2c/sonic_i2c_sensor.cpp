@@ -7,6 +7,10 @@ namespace sonic_i2c {
 
 static const char *const TAG = "sonic_i2c";
 
+// Configurable min/max valid range (in mm)
+constexpr uint16_t MIN_DISTANCE_MM = 20;
+constexpr uint16_t MAX_DISTANCE_MM = 7000;
+
 void SonicI2CSensor::setup() {
   ESP_LOGCONFIG(TAG, "Setting up Sonic I2C Sensor...");
   this->measurement_state_ = IDLE;
@@ -18,7 +22,7 @@ void SonicI2CSensor::dump_config() {
   LOG_I2C_DEVICE(this);
   LOG_UPDATE_INTERVAL(this);
   LOG_SENSOR("  ", "Distance", this);
-  ESP_LOGCONFIG(TAG, "  Range: 2cm - 450cm");
+  ESP_LOGCONFIG(TAG, "  Range: %dmm - %dmm (%.2fcm - %.2fcm, %.2fin - %.2fin)", MIN_DISTANCE_MM, MAX_DISTANCE_MM, MIN_DISTANCE_MM / 10.0f, MAX_DISTANCE_MM / 10.0f, MIN_DISTANCE_MM / 25.4f, MAX_DISTANCE_MM / 25.4f);
 }
 
 void SonicI2CSensor::update() {
@@ -30,12 +34,12 @@ void SonicI2CSensor::update() {
 void SonicI2CSensor::loop() {
   // Non-blocking state machine to handle the measurement timing
   uint32_t now = esp_timer_get_time() / 1000; // milliseconds
-  
+
   switch (this->measurement_state_) {
     case IDLE:
       // Do nothing
       break;
-      
+
     case TRIGGER_MEASUREMENT:
       // Send trigger command (this is fast, <5ms)
       if (this->write_bytes(0x01, nullptr, 0)) {
@@ -44,47 +48,46 @@ void SonicI2CSensor::loop() {
       this->measurement_state_ = WAITING_FOR_MEASUREMENT;
       this->last_measurement_time_ = now;
       break;
-      
+
     case WAITING_FOR_MEASUREMENT:
       // Wait 65ms for measurement to complete (non-blocking)
       if (now - this->last_measurement_time_ >= 65) {
         this->measurement_state_ = READ_RESULT;
       }
       break;
-      
-    case READ_RESULT:
-      {
-        uint8_t data[2];
-        bool success = false;
-        
-        // Always log and publish the raw value for diagnostics
-        if (this->read_bytes(0x00, data, 2)) {
-          uint16_t raw = (data[0] << 8) | data[1];
-          ESP_LOGW(TAG, "Diagnostic: Raw sensor reading: 0x%04X (%d)", raw, raw);
 
-          // Attempt to interpret as mm
-          float distance_m = raw / 1000.0f;
-          ESP_LOGD(TAG, "Diagnostic: Interpreted as meters: %.3f m", distance_m);
+    case READ_RESULT: {
+      uint8_t data[2];
+      bool success = false;
 
-          // Attempt to interpret as cm
-          float distance_m_cm = raw / 100.0f;
-          ESP_LOGD(TAG, "Diagnostic: Interpreted as meters (cm): %.3f m", distance_m_cm);
+      if (this->read_bytes(0x00, data, 2)) {
+        uint16_t distance_mm = (data[0] << 8) | data[1];
+        float distance_cm = distance_mm / 10.0f;
+        float distance_m = distance_mm / 1000.0f;
+        float distance_in = distance_mm / 25.4f;
 
-          // Publish raw value as-is (meters, mm interpretation)
+        ESP_LOGI(TAG, "Raw: 0x%04X | mm: %u | cm: %.2f | m: %.3f | in: %.2f", distance_mm, distance_mm, distance_cm, distance_m, distance_in);
+
+        if (distance_mm >= MIN_DISTANCE_MM && distance_mm <= MAX_DISTANCE_MM) {
+          // Publish in meters (default for ESPHome)
           this->publish_state(distance_m);
 
-          // For diagnostic: you may also want to publish both interpretations to separate sensors
-          // (if you have multiple output sensors; otherwise, log is sufficient)
-
+          // Additional logging for other units
+          ESP_LOGI(TAG, "Published: %.3f m (%.2f cm, %.2f in)", distance_m, distance_cm, distance_in);
           success = true;
-        }
-        if (!success) {
-          ESP_LOGW(TAG, "Failed to read distance (got: 0x%02X%02X)", data[0], data[1]);
+        } else {
+          ESP_LOGW(TAG, "Out of range: 0x%04X (%u mm, %.2f cm, %.2f in)", distance_mm, distance_mm, distance_cm, distance_in);
           this->publish_state(NAN);
         }
-        this->measurement_state_ = IDLE;
-        break;
       }
+
+      if (!success) {
+        ESP_LOGW(TAG, "Failed to read distance (I2C error or out of range)");
+        this->publish_state(NAN);
+      }
+      this->measurement_state_ = IDLE;
+      break;
+    }
   }
 }
 
